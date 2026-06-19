@@ -1,9 +1,10 @@
 import os
-from openai import OpenAI
+
 import discord
+import yaml
 from discord.ext import commands
 from dotenv import load_dotenv
-import yaml
+from openai import OpenAI
 
 load_dotenv()
 
@@ -56,36 +57,21 @@ class Client(commands.Bot):
     async def on_message(self, message):
         if message.author == client.user:
             return
-        
-        if "interest" in message.content:
-            message_history.append({"role": "user", "content": f"{message.author}: {message.content}"})
-            message_history.append({"role": "system", "content": DATABASE_PROMPT})
-            database_content = read_data()
-            message_history.append({"role": "system", "content": str(database_content)})
 
-            response = openai.chat.completions.create(
-                model=MODEL,
-                messages=message_history,
-                temperature=TEMPERATURE,
-                max_tokens=MAX_TOKENS,
-            )
+        message_history.append(
+            {"role": "user", "content": f"{message.author}: {message.content}"}
+        )
 
-            reply = response.choices[0].message.content
+        response = openai.chat.completions.create(
+            model=MODEL,
+            messages=message_history,
+            temperature=TEMPERATURE,
+            max_tokens=MAX_TOKENS,
+        )
 
-            message_history.append({"role": "assistant", "content": reply})
-        else:
-            message_history.append({"role": "user", "content": f"{message.author}: {message.content}"})
+        reply = response.choices[0].message.content
 
-            response = openai.chat.completions.create(
-                model=MODEL,
-                messages=message_history,
-                temperature=TEMPERATURE,
-                max_tokens=MAX_TOKENS,
-            )
-
-            reply = response.choices[0].message.content
-
-            message_history.append({"role": "assistant", "content": reply})
+        message_history.append({"role": "assistant", "content": reply})
 
         await message.reply(reply)
 
@@ -106,13 +92,45 @@ client = Client(
 
 
 @client.tree.command(
+    name="search-interest",
+    description="Search new friends with same interest!",
+    guild=discord.Object(id=GUILD_ID),
+)
+async def search_interest(interaction: discord.Interaction, message: str):
+    message_history.append(
+        {"role": "user", "content": f"{interaction.user}: {message}"}
+    )
+    message_history.append({"role": "system", "content": DATABASE_PROMPT})
+    database_content = read_data()
+    message_history.append({"role": "system", "content": str(database_content)})
+
+    response = openai.chat.completions.create(
+        model=MODEL,
+        messages=message_history,
+        temperature=TEMPERATURE,
+        max_tokens=MAX_TOKENS,
+    )
+
+    reply = response.choices[0].message.content
+
+    message_history.append({"role": "assistant", "content": reply})
+
+    await interaction.response.send_message(reply)
+
+
+@client.tree.command(
     name="add-interest",
     description="Add new gaming related interests to your profile!",
     guild=discord.Object(id=GUILD_ID),
 )
-async def hi(interaction: discord.Interaction, game: str):
+async def add_interest(interaction: discord.Interaction, game: str):
     write_data(user=interaction.user.name, game=game)
-    await interaction.response.send_message(f"Oh {interaction.user} cool you're interested in " + game + "I've marked that down <3")
+    await interaction.response.send_message(
+        f"Oh {interaction.user} cool you're interested in "
+        + game
+        + "I've marked that down <3"
+    )
+
 
 def read_data():
     with open("database.yaml") as stream:
@@ -121,6 +139,7 @@ def read_data():
         except yaml.YAMLError as exc:
             return exc
 
+
 def write_data(user: str, game: str):
     data: dict = read_data()
     try:
@@ -128,9 +147,8 @@ def write_data(user: str, game: str):
             data[user].append(game)
     except KeyError:
         data.update({user: [game]})
-    with open('database.yaml', 'w') as outfile:
+    with open("database.yaml", "w") as outfile:
         yaml.dump(data, outfile, default_flow_style=False, sort_keys=False)
-    
 
 
 client.run(BOT_TOKEN)
