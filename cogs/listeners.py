@@ -16,7 +16,7 @@ class Listeners(commands.Cog):
 
         self.bot.message_history.append({"role": "user", "content": f"{message.author}: {message.content}"})
 
-        response = self.bot.openai.chat.completions.create(
+        response = await self.bot.openai.chat.completions.create(
             model=config.MODEL,
             messages=self.bot.message_history,
             temperature=config.TEMPERATURE,
