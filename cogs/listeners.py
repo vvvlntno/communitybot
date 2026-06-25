@@ -18,12 +18,61 @@ class AddInterestView(discord.ui.View):
         
         write_data(user=self.user_name, game=self.topic)
         await interaction.message.edit(view=None)
-        
-        # We leave ephemeral button clicks hardcoded because they should be instant and snappy. 
-        # Making an LLM call for a UI confirmation is bad UX.
         await interaction.response.send_message(f"Added {self.topic} to your profile!", ephemeral=True)
 
     @discord.ui.button(label="Ignore", style=discord.ButtonStyle.gray)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.name != self.user_name:
+            return await interaction.response.send_message("This prompt isn't for you!", ephemeral=True)
+        
+        await interaction.message.edit(view=None)
+        await interaction.response.defer()
+
+class CreateChannelView(discord.ui.View):
+    def __init__(self, bot, user_name: str, topic: str):
+        super().__init__(timeout=300)
+        self.bot = bot
+        self.user_name = user_name
+        self.topic = topic
+
+    @discord.ui.button(label="Create Channel", style=discord.ButtonStyle.blurple)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.name != self.user_name:
+            return await interaction.response.send_message("This prompt isn't for you!", ephemeral=True)
+        
+        await interaction.response.defer()
+        await interaction.message.edit(view=None)
+
+        channel_name = self.topic.lower().replace(" ", "-")
+        channel = discord.utils.get(interaction.guild.text_channels, name=channel_name)
+        
+        if not channel:
+            channel = await interaction.guild.create_text_channel(name=channel_name)
+
+        db = read_data()
+        mentions = [
+            m.mention for u, interests in (db.items() if isinstance(db, dict) else [])
+            if interests and self.topic.lower() in (str(i).lower() for i in interests)
+            and (m := interaction.guild.get_member_named(u))
+        ]
+
+        ping_text = ' '.join(mentions) if mentions else "No specific users to ping yet."
+        sys_instruction = f"Write a short, hype welcome message for the brand new {self.topic} channel. You MUST explicitly include these pings in your message: {ping_text}"
+        
+        resp = await self.bot.openai.chat.completions.create(
+            model=config.MODEL,
+            messages=[
+                {"role": "system", "content": prompts.SYSTEM_PROMPT},
+                {"role": "user", "content": sys_instruction}
+            ],
+            temperature=config.TEMPERATURE,
+            max_tokens=config.MAX_TOKENS,
+        )
+
+        await channel.send(resp.choices[0].message.content)
+        await interaction.followup.send(f"Done! Check out {channel.mention}", ephemeral=True)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.gray)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.name != self.user_name:
             return await interaction.response.send_message("This prompt isn't for you!", ephemeral=True)
@@ -44,10 +93,8 @@ class Listeners(commands.Cog):
         if message.author == self.bot.user:
             return
 
-        # Masks the latency of sequential API calls
         async with message.channel.typing():
             
-            # 1. Background Extraction (Runs First)
             extract_resp = await self.bot.openai.chat.completions.create(
                 model=config.MODEL,
                 messages=[
@@ -72,7 +119,6 @@ class Listeners(commands.Cog):
             system_instruction = ""
             view = None
 
-            # 1a. Handle auto-adding interests
             new_topic = data.get("new_interest")
             if new_topic and str(new_topic).lower() not in ["null", "none"]:
                 user_interests = [str(i).lower() for i in (db.get(message.author.name) or [])]
@@ -80,11 +126,9 @@ class Listeners(commands.Cog):
                     view = AddInterestView(message.author.name, new_topic)
                     system_instruction = f"SYSTEM INSTRUCTION: You are attaching a UI button to let the user add {new_topic} to their profile. Naturally ask them if they want to add it to their profile."
 
-            # 1b. Handle matchmaking pings
             game_to_play = data.get("wants_to_play")
             if game_to_play and str(game_to_play).lower() not in ["null", "none"]:
                 guild = self.bot.get_guild(self.bot.guild_id.id)
-                
                 mentions = [
                     m.mention for u, interests in db.items() 
                     if u != message.author.name 
@@ -98,8 +142,17 @@ class Listeners(commands.Cog):
                 else:
                     system_instruction = f"SYSTEM INSTRUCTION: The user wants to play {game_to_play}, but nobody in your database plays it yet. Inform them naturally."
 
-            # 2. Main Chat Generation
-            # We copy the history so we can inject our secret instruction without polluting long-term memory
+            drive_topic = data.get("drive_topic")
+            if drive_topic and str(drive_topic).lower() not in ["null", "none"]:
+                channel_name = str(drive_topic).lower().replace(" ", "-")
+                existing_channel = discord.utils.get(message.guild.text_channels, name=channel_name)
+                
+                if existing_channel:
+                    system_instruction = f"SYSTEM INSTRUCTION: The user wants a space to talk about {drive_topic}, but a channel already exists! Enthusiastically point them to {existing_channel.mention}."
+                else:
+                    view = CreateChannelView(self.bot, message.author.name, drive_topic)
+                    system_instruction = f"SYSTEM INSTRUCTION: You are attaching a UI button to let the user create a dedicated #{channel_name} channel. Naturally ask them if they want you to set it up for them."
+
             current_context = self.bot.message_history.copy()
             current_context.append({"role": "user", "content": f"{message.author.name}: {message.content}"})
             
@@ -115,7 +168,6 @@ class Listeners(commands.Cog):
 
             reply = chat_resp.choices[0].message.content
 
-            # 3. Commit only the standard conversation to permanent memory
             self.bot.message_history.append({"role": "user", "content": f"{message.author.name}: {message.content}"})
             self.bot.message_history.append({"role": "assistant", "content": reply})
 

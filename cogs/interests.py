@@ -57,7 +57,6 @@ class Interests(commands.Cog):
             {"role": "system", "content": str(read_data())}
         ])
 
-        # Awaiting the async client
         response = await self.bot.openai.chat.completions.create(
             model=config.MODEL,
             messages=self.bot.message_history,
