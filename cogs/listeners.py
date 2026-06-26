@@ -3,8 +3,8 @@ import discord
 from discord.ext import commands
 import config
 import core.prompts as prompts
-from core.db import read_data, write_data, write_topic_channel, read_topic_channels
-from cogs.interests import generate_persona, generate_welcome_message, send_webhook_message
+from core.db import read_data, write_data, write_topic_channel, read_topic_channels, log_event
+from cogs.interests import generate_persona, generate_welcome_message, send_webhook_message, setup_category_and_driver
 
 def make_profile_embed(user: discord.User, interests: list[str]) -> discord.Embed:
     embed = discord.Embed(
@@ -15,7 +15,6 @@ def make_profile_embed(user: discord.User, interests: list[str]) -> discord.Embe
     if user.avatar:
         embed.set_thumbnail(url=user.avatar.url)
     else:
-        # Fallback to default avatar
         embed.set_thumbnail(url=user.default_avatar.url)
     
     if interests:
@@ -134,11 +133,24 @@ class CreateChannelView(discord.ui.View):
         await interaction.response.defer()
         await interaction.message.edit(view=None)
 
+        # Retrieve or create category, assign driver role
+        category = await setup_category_and_driver(interaction.guild, interaction.user)
+
         channel_name = self.topic.lower().replace(" ", "-")
         channel = discord.utils.get(interaction.guild.text_channels, name=channel_name)
         
         if not channel:
-            channel = await interaction.guild.create_text_channel(name=channel_name)
+            channel = await interaction.guild.create_text_channel(name=channel_name, category=category)
+
+        # Log NLP-triggered drive-topic event
+        log_event(
+            event_type="nlp_triggered",
+            username=self.user_name,
+            channel_name=interaction.channel.name if interaction.channel else "unknown",
+            interface="natural_language",
+            functionality="drive-topic",
+            details={"topic": self.topic.strip().lower(), "channel_name": channel_name}
+        )
 
         # Generate persona
         persona = await generate_persona(self.bot, self.topic)
@@ -200,6 +212,16 @@ class Listeners(commands.Cog):
             username = persona_info["username"]
             personality = persona_info["personality"]
 
+            # Log user channel message
+            log_event(
+                event_type="channel_message",
+                username=message.author.name,
+                channel_name=message.channel.name,
+                interface="natural_language",
+                functionality="persona_chat",
+                details={"message_length": len(message.content), "is_bot": False}
+            )
+
             # Initialize channel history if it does not exist
             if message.channel.id not in self.bot.channel_histories:
                 sys_prompt = prompts.AGENT_SYSTEM_PROMPT.format(
@@ -230,6 +252,16 @@ class Listeners(commands.Cog):
             )
 
             await send_webhook_message(message.channel, username, reply)
+
+            # Log agent channel message
+            log_event(
+                event_type="channel_message",
+                username="",
+                channel_name=message.channel.name,
+                interface="natural_language",
+                functionality="persona_chat",
+                details={"message_length": len(reply), "is_bot": True, "agent_username": username}
+            )
             return
 
         # General/Matchmaking flow in non-topic channels
@@ -253,6 +285,13 @@ class Listeners(commands.Cog):
 
             # Detect check/view profile request
             if data.get("view_profile") is True or str(data.get("view_profile")).lower() == "true":
+                log_event(
+                    event_type="nlp_triggered",
+                    username=message.author.name,
+                    channel_name=message.channel.name,
+                    interface="natural_language",
+                    functionality="profile"
+                )
                 db = read_data()
                 interests = (db.get(message.author.name) or []) if isinstance(db, dict) else []
                 embed = make_profile_embed(message.author, interests)
@@ -269,6 +308,14 @@ class Listeners(commands.Cog):
 
             new_topic = data.get("new_interest")
             if new_topic and str(new_topic).lower() not in ["null", "none"]:
+                log_event(
+                    event_type="nlp_triggered",
+                    username=message.author.name,
+                    channel_name=message.channel.name,
+                    interface="natural_language",
+                    functionality="add-interest",
+                    details={"game": new_topic.strip().lower()}
+                )
                 user_interests = [str(i).lower() for i in (db.get(message.author.name) or [])]
                 if str(new_topic).lower() not in user_interests:
                     view = AddInterestView(message.author.name, new_topic)
@@ -276,6 +323,14 @@ class Listeners(commands.Cog):
 
             game_to_play = data.get("wants_to_play")
             if game_to_play and str(game_to_play).lower() not in ["null", "none"]:
+                log_event(
+                    event_type="nlp_triggered",
+                    username=message.author.name,
+                    channel_name=message.channel.name,
+                    interface="natural_language",
+                    functionality="search-interest",
+                    details={"game": game_to_play.strip().lower()}
+                )
                 guild = self.bot.get_guild(self.bot.guild_id.id)
                 mentions = [
                     m.mention for u, interests in db.items() 
