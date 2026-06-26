@@ -2,7 +2,7 @@
 
 A Discord-based community support bot and evaluation platform designed to study and quantitatively analyze user interaction paradigms in online community spaces. Developed as part of a Master's degree course in Cooperation Systems, the platform evaluates the adoption of **Natural Language Processing (NLP) triggers** against **traditional Slash Commands** for matchmaking, profiling, and topic-driving activities.
 
-TECHNICAL DEMO [Click Here!](https://youtu.be/faNAsrZKqDI?si=oUB0Op0uD97tGvik)
+TECHNICAL DEMO [Click Here!](https://youtu.be/LseIKPZIywg)
 
 ---
 
