@@ -4,8 +4,6 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
-import core.prompts as prompts
-
 load_dotenv()
 
 class Client(commands.Bot):
@@ -20,7 +18,7 @@ class Client(commands.Bot):
         )
         self.openai = AsyncOpenAI(api_key=os.getenv("MISTRAL_API_KEY"), base_url="https://api.mistral.ai/v1")
         
-        self.message_history = [{"role": "system", "content": prompts.SYSTEM_PROMPT}]
+        self.channel_histories = {}
         self.guild_id = discord.Object(id=int(os.getenv("GUILD_ID")))
 
     async def setup_hook(self):
