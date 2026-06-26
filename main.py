@@ -4,8 +4,6 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
-import core.prompts as prompts
-
 load_dotenv()
 
 class Client(commands.Bot):

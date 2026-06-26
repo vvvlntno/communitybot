@@ -113,6 +113,43 @@ class Interests(commands.Cog):
         view = ProfileView(interaction.user)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
+    @app_commands.command(name="help", description="Get an overview of what the bot can do!")
+    async def help_command(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="🤖 CommunityBot Help & Features",
+            description="Welcome! Here is an overview of how I can help you connect with players and explore topics.",
+            color=discord.Color.blue()
+        )
+        embed.add_field(
+            name="🎮 Profile & Interests Commands",
+            value=(
+                "• `/profile` - View your profile card and remove interests via a dropdown menu.\n"
+                "• `/add-interest <game>` - Add a new gaming interest to your profile.\n"
+                "• `/search-interest <game>` - Search for other members in the database interested in a game."
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="💬 Topic Channels & AI Agents",
+            value=(
+                "• `/drive-topic <topic>` - Create a dedicated text channel for a game/topic. "
+                "A dynamically generated AI gamer persona will join the channel to chat with you!"
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="🧠 Natural Language Interactions",
+            value=(
+                "You can chat normally in general channels! I will automatically detect if you want to:\n"
+                "• **Add an interest** (e.g., *'I'm starting to like Valorant'*)\n"
+                "• **Find group members** (e.g., *'anyone down to play Overwatch?'*)\n"
+                "• **Open a new space** (e.g., *'can we get a channel for Minecraft?'*)\n"
+                "• **View your profile** (e.g., *'what am I interested in?'*)"
+            ),
+            inline=False
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @app_commands.command(name="drive-topic", description="Add a new topic to the server!")
     async def drive_topic(self, interaction: discord.Interaction, topic: str):
         await interaction.response.defer()
