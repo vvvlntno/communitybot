@@ -42,4 +42,23 @@ def write_topic_channel(channel_id: int, topic: str, username: str, personality:
         "personality": personality
     }
     with open("topic_channels.json", "w") as f:
-        json.dump(data, f, indent=4)
+        json.dump(data, f, indent=4)
+
+
+def remove_interest(user: str, game: str):
+    data: dict = read_data()
+    if isinstance(data, dict) and user in data:
+        interests = data[user]
+        if isinstance(interests, list):
+            data[user] = [i for i in interests if str(i).strip().lower() != game.strip().lower()]
+            with open("database.yaml", "w") as outfile:
+                yaml.dump(data, outfile, default_flow_style=False, sort_keys=False)
+
+
+def clear_interests(user: str):
+    data: dict = read_data()
+    if isinstance(data, dict) and user in data:
+        data[user] = []
+        with open("database.yaml", "w") as outfile:
+            yaml.dump(data, outfile, default_flow_style=False, sort_keys=False)
+

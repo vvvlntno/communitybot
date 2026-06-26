@@ -6,6 +6,96 @@ import core.prompts as prompts
 from core.db import read_data, write_data, write_topic_channel, read_topic_channels
 from cogs.interests import generate_persona, generate_welcome_message, send_webhook_message
 
+def make_profile_embed(user: discord.User, interests: list[str]) -> discord.Embed:
+    embed = discord.Embed(
+        title=f"🎮 {user.display_name}'s Profile",
+        description="Manage your gaming interests below. Select an interest from the dropdown to remove it, or click the clear button.",
+        color=discord.Color.blurple()
+    )
+    if user.avatar:
+        embed.set_thumbnail(url=user.avatar.url)
+    else:
+        # Fallback to default avatar
+        embed.set_thumbnail(url=user.default_avatar.url)
+    
+    if interests:
+        embed.add_field(
+            name="Your Saved Interests",
+            value="\n".join(f"• **{i}**" for i in interests),
+            inline=False
+        )
+    else:
+        embed.add_field(
+            name="Your Saved Interests",
+            value="*You haven't added any interests yet!*",
+            inline=False
+        )
+    return embed
+
+class RemoveInterestSelect(discord.ui.Select):
+    def __init__(self, user: discord.User, options: list[discord.SelectOption]):
+        super().__init__(
+            placeholder="Select an interest to remove it...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+        self.user = user
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user.id:
+            return await interaction.response.send_message("This profile control is not for you!", ephemeral=True)
+        
+        selected_game = self.values[0]
+        from core.db import remove_interest
+        remove_interest(self.user.name, selected_game)
+        
+        db = read_data()
+        interests = (db.get(self.user.name) or []) if isinstance(db, dict) else []
+        embed = make_profile_embed(self.user, interests)
+        
+        view = ProfileView(self.user)
+        await interaction.response.edit_message(embed=embed, view=view)
+
+class ClearAllButton(discord.ui.Button):
+    def __init__(self, user: discord.User):
+        super().__init__(
+            label="Clear All",
+            style=discord.ButtonStyle.red,
+            emoji="🗑️"
+        )
+        self.user = user
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user.id:
+            return await interaction.response.send_message("This profile control is not for you!", ephemeral=True)
+        
+        from core.db import clear_interests
+        clear_interests(self.user.name)
+        
+        embed = make_profile_embed(self.user, [])
+        view = ProfileView(self.user)
+        await interaction.response.edit_message(embed=embed, view=view)
+
+class ProfileView(discord.ui.View):
+    def __init__(self, user: discord.User):
+        super().__init__(timeout=300)
+        self.user = user
+        self.update_components()
+
+    def update_components(self):
+        self.clear_items()
+        db = read_data()
+        interests = (db.get(self.user.name) or []) if isinstance(db, dict) else []
+        
+        if interests:
+            options = [
+                discord.SelectOption(label=interest, value=interest, emoji="❌")
+                for interest in interests[:25]
+            ]
+            self.add_item(RemoveInterestSelect(self.user, options))
+            self.add_item(ClearAllButton(self.user))
+
 class AddInterestView(discord.ui.View):
     def __init__(self, user_name: str, topic: str):
         super().__init__(timeout=300)
@@ -160,6 +250,15 @@ class Listeners(commands.Cog):
                 data = json.loads(clean_json) if clean_json else {}
             except json.JSONDecodeError:
                 data = {}
+
+            # Detect check/view profile request
+            if data.get("view_profile") is True or str(data.get("view_profile")).lower() == "true":
+                db = read_data()
+                interests = (db.get(message.author.name) or []) if isinstance(db, dict) else []
+                embed = make_profile_embed(message.author, interests)
+                view = ProfileView(message.author)
+                await message.reply(embed=embed, view=view)
+                return
 
             db = read_data()
             if not isinstance(db, dict):

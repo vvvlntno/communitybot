@@ -54,9 +54,14 @@ async def send_webhook_message(channel, username: str, content: str):
     webhook = next((w for w in webhooks if w.name == "Community Agent"), None)
     if not webhook:
         webhook = await channel.create_webhook(name="Community Agent")
+    
+    import urllib.parse
+    avatar_url = f"https://image.pollinations.ai/prompt/gamer%20avatar%20for%20{urllib.parse.quote(username)}?width=150&height=150&nologo=true"
+    
     await webhook.send(
         content=content,
-        username=username
+        username=username,
+        avatar_url=avatar_url
     )
 
 class Interests(commands.Cog):
@@ -98,6 +103,15 @@ class Interests(commands.Cog):
     async def add_interest(self, interaction: discord.Interaction, game: str):
         write_data(user=interaction.user.name, game=game)
         await interaction.response.send_message(f"Oh {interaction.user} cool you're interested in {game} I've marked that down <3")
+
+    @app_commands.command(name="profile", description="View and manage your gaming interests!")
+    async def profile(self, interaction: discord.Interaction):
+        from cogs.listeners import make_profile_embed, ProfileView
+        db = read_data()
+        interests = (db.get(interaction.user.name) or []) if isinstance(db, dict) else []
+        embed = make_profile_embed(interaction.user, interests)
+        view = ProfileView(interaction.user)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @app_commands.command(name="drive-topic", description="Add a new topic to the server!")
     async def drive_topic(self, interaction: discord.Interaction, topic: str):

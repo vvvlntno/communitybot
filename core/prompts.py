@@ -28,12 +28,14 @@ Definitions:
 - "new_interest": The user is declaring a general, long-term interest (e.g., "I like Minecraft", "I'm getting into Valorant"). 
 - "wants_to_play": The user is actively looking for a group to play with right now (e.g., "lfg", "who wants to play", "searching for people", "anyone on?").
 - "drive_topic": The user asks for a dedicated space, channel, or section to talk about a topic (e.g., "can we get a channel for", "we need a space for", "i want to talk more about").
+- "view_profile": The user is asking to view, see, or check their own interests/profile (e.g., "what am I interested in?", "show my profile", "what is on my profile?").
 
 Schema:
 {
   "new_interest": "string (name of game/topic, or null if not declaring a general interest)",
   "wants_to_play": "string (name of game/topic, or null if not actively looking for a group)",
-  "drive_topic": "string (name of game/topic, or null if not asking to create a channel)"
+  "drive_topic": "string (name of game/topic, or null if not asking to create a channel)",
+  "view_profile": "boolean (true if the user is asking to check/view their profile/interests, otherwise false)"
 }
 """
 
