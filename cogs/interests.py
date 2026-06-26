@@ -5,7 +5,23 @@ from discord.ext import commands
 
 import config
 import core.prompts as prompts
-from core.db import read_data, write_data, write_topic_channel
+from core.db import read_data, write_data, write_topic_channel, log_event
+
+async def setup_category_and_driver(guild: discord.Guild, member: discord.Member) -> discord.CategoryChannel:
+    category_name = "user-driven-topics"
+    category = discord.utils.get(guild.categories, name=category_name)
+    if not category:
+        category = await guild.create_category(name=category_name)
+    
+    role_name = "Topic Driver"
+    role = discord.utils.get(guild.roles, name=role_name)
+    if not role:
+        role = await guild.create_role(name=role_name, color=discord.Color.gold(), mentionable=True)
+    
+    if role not in member.roles:
+        await member.add_roles(role)
+        
+    return category
 
 async def generate_persona(bot, topic: str) -> dict:
     resp = await bot.openai.chat.completions.create(
@@ -74,6 +90,14 @@ class Interests(commands.Cog):
 
     @app_commands.command(name="search-interest", description="Search new friends with same interest!")
     async def search_interest(self, interaction: discord.Interaction, message: str):
+        log_event(
+            event_type="command_used",
+            username=interaction.user.name,
+            channel_name=interaction.channel.name if interaction.channel else "unknown",
+            interface="slash_command",
+            functionality="search-interest",
+            details={"game": message.strip().lower()}
+        )
         db_content = read_data()
         messages = [
             {"role": "system", "content": prompts.SYSTEM_PROMPT},
@@ -101,11 +125,26 @@ class Interests(commands.Cog):
 
     @app_commands.command(name="add-interest", description="Add new gaming related interests to your profile!")
     async def add_interest(self, interaction: discord.Interaction, game: str):
+        log_event(
+            event_type="command_used",
+            username=interaction.user.name,
+            channel_name=interaction.channel.name if interaction.channel else "unknown",
+            interface="slash_command",
+            functionality="add-interest",
+            details={"game": game.strip().lower()}
+        )
         write_data(user=interaction.user.name, game=game)
         await interaction.response.send_message(f"Oh {interaction.user} cool you're interested in {game} I've marked that down <3")
 
     @app_commands.command(name="profile", description="View and manage your gaming interests!")
     async def profile(self, interaction: discord.Interaction):
+        log_event(
+            event_type="command_used",
+            username=interaction.user.name,
+            channel_name=interaction.channel.name if interaction.channel else "unknown",
+            interface="slash_command",
+            functionality="profile"
+        )
         from cogs.listeners import make_profile_embed, ProfileView
         db = read_data()
         interests = (db.get(interaction.user.name) or []) if isinstance(db, dict) else []
@@ -115,6 +154,13 @@ class Interests(commands.Cog):
 
     @app_commands.command(name="help", description="Get an overview of what the bot can do!")
     async def help_command(self, interaction: discord.Interaction):
+        log_event(
+            event_type="command_used",
+            username=interaction.user.name,
+            channel_name=interaction.channel.name if interaction.channel else "unknown",
+            interface="slash_command",
+            functionality="help"
+        )
         embed = discord.Embed(
             title="🤖 CommunityBot Help & Features",
             description="Welcome! Here is an overview of how I can help you connect with players and explore topics.",
@@ -154,15 +200,28 @@ class Interests(commands.Cog):
     async def drive_topic(self, interaction: discord.Interaction, topic: str):
         await interaction.response.defer()
 
+        # Retrieve or create category, assign driver role
+        category = await setup_category_and_driver(interaction.guild, interaction.user)
+
         # Generate persona
         persona = await generate_persona(self.bot, topic)
         username = persona["username"]
         personality = persona["personality"]
 
-        # Create channel
+        # Create channel in the category
         guild = interaction.guild
         channel_name = topic.lower().replace(" ", "-")
-        channel = await guild.create_text_channel(name=channel_name)
+        channel = await guild.create_text_channel(name=channel_name, category=category)
+
+        # Log drive topic event
+        log_event(
+            event_type="command_used",
+            username=interaction.user.name,
+            channel_name=interaction.channel.name if interaction.channel else "unknown",
+            interface="slash_command",
+            functionality="drive-topic",
+            details={"topic": topic.strip().lower(), "channel_name": channel_name}
+        )
 
         # Save channel mapping
         write_topic_channel(channel.id, topic, username, personality)

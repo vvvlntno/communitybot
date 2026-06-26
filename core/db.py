@@ -12,11 +12,12 @@ def read_data():
 
 def write_data(user: str, game: str):
     data: dict = read_data()
+    game_lower = game.strip().lower()
     try:
-        if game not in data[user]:
-            data[user].append(game)
+        if game_lower not in data[user]:
+            data[user].append(game_lower)
     except KeyError:
-        data.update({user: [game]})
+        data.update({user: [game_lower]})
     with open("database.yaml", "w") as outfile:
         yaml.dump(data, outfile, default_flow_style=False, sort_keys=False)
 
@@ -61,4 +62,27 @@ def clear_interests(user: str):
         data[user] = []
         with open("database.yaml", "w") as outfile:
             yaml.dump(data, outfile, default_flow_style=False, sort_keys=False)
+
+
+def hash_user(username: str) -> str:
+    import hashlib
+    if not username:
+        return "system"
+    return hashlib.sha256(username.encode("utf-8")).hexdigest()[:8]
+
+
+def log_event(event_type: str, username: str, channel_name: str, interface: str, functionality: str, details: dict = None):
+    import json
+    from datetime import datetime, timezone
+    log_entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event_type": event_type,
+        "user": hash_user(username) if username else "system",
+        "channel": channel_name,
+        "interface": interface,
+        "functionality": functionality,
+        "details": details or {}
+    }
+    with open("metrics_log.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps(log_entry) + "\n")
 
